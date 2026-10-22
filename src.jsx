@@ -38,9 +38,8 @@ const criteria = [
   "Full Path",
   "Redaction",
 ];
-const day = new Date().toLocaleDateString("en-CA", {
-  timeZone: "Asia/Kolkata",
-});
+const statusNames = ["Solved", "Pending", "New", "Escalated", "Closed"];
+const statusColors = ["#277859", "#e4b665", "#b7c7ec", "#c88e7c", "#7b96a2"];
 const dateKey = (v) =>
   new Date(v).toLocaleDateString("en-CA", { timeZone: "Asia/Kolkata" });
 async function api(path, method = "GET", body) {
@@ -691,7 +690,7 @@ function App({ user }) {
                   <div
                     className="donut"
                     style={{
-                      background: `conic-gradient(#277859 0 ${(solved.length / Math.max(visible.length, 1)) * 100}%,#e4b665 0 ${((solved.length + visible.filter((t) => t.status === "Pending").length) / Math.max(visible.length, 1)) * 100}%,#b7c7ec 0 100%)`,
+                      background: visible.length ? `conic-gradient(${statusNames.map((name,i)=>{const start=statusNames.slice(0,i).reduce((sum,n)=>sum+visible.filter(t=>t.status===n).length,0)/visible.length*100;const end=start+visible.filter(t=>t.status===name).length/visible.length*100;return `${statusColors[i]} ${start}% ${end}%`}).join(',')})` : '#edf1ed',
                     }}
                   >
                     <div>
@@ -700,12 +699,12 @@ function App({ user }) {
                     </div>
                   </div>
                   <div className="statuslegend">
-                    {["Solved", "Pending", "New"].map((s, i) => (
+                    {statusNames.map((s, i) => (
                       <div key={s}>
                         <span>
                           <i
                             style={{
-                              background: ["#277859", "#e4b665", "#b7c7ec"][i],
+                              background: statusColors[i],
                             }}
                           />
                           {s}
@@ -1397,8 +1396,8 @@ function TeamTable({ team, compact }) {
                 )}
               </td>
               <td>
-                <span className="badge solved">
-                  <i /> Active
+                <span className={"badge " + (u.active ? "solved" : "")} >
+                  <i /> {u.active ? "Active" : "Inactive"}
                 </span>
               </td>
             </tr>
