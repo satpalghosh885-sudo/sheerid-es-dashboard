@@ -1189,3 +1189,29 @@ select:focus {
   border: 0;
   cursor: pointer;
 }
+.button.danger {
+  color: #a33c32;
+  border-color: #e3bcb7;
+  background: #fff6f4;
+}
+.button.danger:not(:disabled):hover {
+  background: #fce4df;
+}
+.delete-list {
+  max-height: 160px;
+  overflow: auto;
+  background: #f6f8f5;
+  border: 1px solid #e1e7df;
+  border-radius: 6px;
+  padding: 12px;
+  margin: 16px 0;
+  font-size: 12px;
+  line-height: 1.9;
+}
+input[type="checkbox"] {
+  accent-color: #286c50;
+  cursor: pointer;
+  width: 15px;
+  height: 15px;
+  box-shadow: none;
+}

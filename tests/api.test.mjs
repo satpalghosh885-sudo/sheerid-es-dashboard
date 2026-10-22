@@ -184,6 +184,107 @@ test("shared storage, authentication, authorization, scoring and revocation", as
     state = (await req("/state", "GET", null, a)).data;
     assert.equal(state.tickets.length, 1);
     assert.equal(state.reviews.length, 1);
+    const reviewId = state.reviews[0].id;
+    assert.equal(
+      (
+        await req(
+          "/reviews/delete-selected",
+          "POST",
+          { ids: [reviewId], confirmation: "DELETE SELECTED QC REVIEWS" },
+          qa,
+        )
+      ).status,
+      403,
+    );
+    assert.equal(
+      (
+        await req(
+          "/tickets/delete-selected",
+          "POST",
+          { ids: ["T-1"], confirmation: "DELETE SELECTED TICKETS" },
+          qa,
+        )
+      ).status,
+      403,
+    );
+    assert.equal(
+      (
+        await req(
+          "/reviews/delete-selected",
+          "POST",
+          { ids: [reviewId], confirmation: "wrong" },
+          a,
+        )
+      ).status,
+      400,
+    );
+    assert.equal(
+      (
+        await req(
+          "/tickets/delete-selected",
+          "POST",
+          { ids: ["T-1", "missing"], confirmation: "DELETE SELECTED TICKETS" },
+          a,
+        )
+      ).status,
+      409,
+    );
+    assert.equal((await req("/state", "GET", null, a)).data.tickets.length, 1);
+    assert.equal(
+      (
+        await req(
+          "/reviews/delete-selected",
+          "POST",
+          { ids: [reviewId], confirmation: "DELETE SELECTED QC REVIEWS" },
+          a,
+        )
+      ).status,
+      200,
+    );
+    state = (await req("/state", "GET", null, a)).data;
+    assert.equal(state.reviews.length, 0);
+    assert.equal(state.tickets.length, 1);
+    await req("/tickets", "POST", { id: "KEEP-2", client: "Adobe" }, a);
+    await req("/tickets/KEEP-2", "PATCH", { status: "Solved" }, a);
+    for (const ticket of ["T-1", "KEEP-2"])
+      await req("/reviews", "POST", { ticket, ratings: Array(13).fill(5) }, a);
+    assert.equal(
+      (
+        await req(
+          "/tickets/delete-selected",
+          "POST",
+          { ids: [], confirmation: "DELETE SELECTED TICKETS" },
+          a,
+        )
+      ).status,
+      400,
+    );
+    const deleted = await req(
+      "/tickets/delete-selected",
+      "POST",
+      { ids: ["T-1"], confirmation: "DELETE SELECTED TICKETS" },
+      a,
+    );
+    assert.equal(deleted.status, 200);
+    assert.equal(deleted.data.linkedReviews, 1);
+    state = (await req("/state", "GET", null, a)).data;
+    assert.deepEqual(
+      state.tickets.map((t) => t.id),
+      ["KEEP-2"],
+    );
+    assert.equal(state.reviews.length, 1);
+    assert.equal(state.reviews[0].ticket, "KEEP-2");
+    assert.equal(state.users.length, 3);
+    assert.equal(state.settings.weights[0], 100);
+    const events = (await req("/audit", "GET", null, a)).data;
+    assert.ok(
+      events.some((e) => e.action === "ticket_deleted" && e.target === "T-1"),
+    );
+    assert.ok(
+      events.some(
+        (e) => e.action === "review_deleted" && e.target === String(reviewId),
+      ),
+    );
     assert.equal(
       (
         await req(

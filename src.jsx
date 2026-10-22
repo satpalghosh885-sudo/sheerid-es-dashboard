@@ -137,9 +137,11 @@ function Root() {
     try {
       await fn();
       await refresh();
+      return true;
     } catch (e) {
       G(e.message);
       setTimeout(() => G(""), 6000);
+      return false;
     } finally {
       Z(false);
     }
@@ -215,7 +217,7 @@ function Root() {
       </div>
     );
   return (
-    <Store.Provider value={{ data, mutate }}>
+    <Store.Provider value={{ data, mutate, busy }}>
       <App user={data.user} />
       {busy && <div className="saving">Saving…</div>}
       {message && (
@@ -242,6 +244,24 @@ const initials = (n) =>
     .slice(0, 2)
     .join("");
 function App({ user }) {
+  const store = React.useContext(Store);
+  const [selectedTickets, selectTickets] = S([]),
+    [selectedReviews, selectReviews] = S([]),
+    [deleting, setDeleting] = S(null),
+    [confirmDelete, setConfirmDelete] = S("");
+  const toggleSelection = (set, id) =>
+    set((old) =>
+      old.includes(id)
+        ? old.filter((x) => x !== id)
+        : old.length < 100
+          ? [...old, id]
+          : old,
+    );
+  const beginDelete = (kind, ids) => {
+    setDeleting({ kind, ids });
+    setConfirmDelete("");
+  };
+
   const [page, P] = S("Overview"),
     [tickets, T] = useStore("sheer-tickets"),
     [users, U] = useStore("sheer-users"),
@@ -270,6 +290,9 @@ function App({ user }) {
     (t) =>
       (period !== "Today" || dateKey(t.start) === dateKey(Date.now())) &&
       (admin || qc || t.user_id === me.id),
+  );
+  const selectedTicketIds = selectedTickets.filter((id) =>
+    visible.some((t) => t.id === id),
   );
   const reportDays = Math.max(
     1,
@@ -324,6 +347,9 @@ function App({ user }) {
       `${t.id} ${t.operator} ${t.client}`
         .toLowerCase()
         .includes(search.toLowerCase()),
+  );
+  const selectedReviewIds = selectedReviews.filter((id) =>
+    scopedReviews.some((r) => r.id === id),
   );
   function transition(id, s) {
     T((ts) =>
@@ -690,7 +716,31 @@ function App({ user }) {
                   <div
                     className="donut"
                     style={{
-                      background: visible.length ? `conic-gradient(${statusNames.map((name,i)=>{const start=statusNames.slice(0,i).reduce((sum,n)=>sum+visible.filter(t=>t.status===n).length,0)/visible.length*100;const end=start+visible.filter(t=>t.status===name).length/visible.length*100;return `${statusColors[i]} ${start}% ${end}%`}).join(',')})` : '#edf1ed',
+                      background: visible.length
+                        ? `conic-gradient(${statusNames
+                            .map((name, i) => {
+                              const start =
+                                (statusNames
+                                  .slice(0, i)
+                                  .reduce(
+                                    (sum, n) =>
+                                      sum +
+                                      visible.filter((t) => t.status === n)
+                                        .length,
+                                    0,
+                                  ) /
+                                  visible.length) *
+                                100;
+                              const end =
+                                start +
+                                (visible.filter((t) => t.status === name)
+                                  .length /
+                                  visible.length) *
+                                  100;
+                              return `${statusColors[i]} ${start}% ${end}%`;
+                            })
+                            .join(",")})`
+                        : "#edf1ed",
                     }}
                   >
                     <div>
@@ -748,6 +798,15 @@ function App({ user }) {
                   <span className="pill">{filtered.length} tickets</span>
                 </h2>
                 <div className="actions">
+                  {admin && (
+                    <button
+                      className="button danger"
+                      disabled={!selectedTicketIds.length}
+                      onClick={() => beginDelete("tickets", selectedTicketIds)}
+                    >
+                      Delete selected ({selectedTicketIds.length})
+                    </button>
+                  )}
                   <label className="search">
                     <Search size={16} />
                     <input
@@ -774,6 +833,27 @@ function App({ user }) {
                 <table>
                   <thead>
                     <tr>
+                      {admin && (
+                        <th>
+                          <input
+                            type="checkbox"
+                            aria-label="Select visible tickets (up to 100)"
+                            checked={
+                              filtered.length > 0 &&
+                              filtered
+                                .slice(0, 100)
+                                .every((t) => selectedTickets.includes(t.id))
+                            }
+                            onChange={(e) =>
+                              selectTickets(
+                                e.target.checked
+                                  ? filtered.slice(0, 100).map((t) => t.id)
+                                  : [],
+                              )
+                            }
+                          />
+                        </th>
+                      )}
                       {[
                         "Ticket ID",
                         "Operator / Client",
@@ -789,6 +869,18 @@ function App({ user }) {
                   <tbody>
                     {filtered.map((t) => (
                       <tr key={t.id}>
+                        {admin && (
+                          <td>
+                            <input
+                              type="checkbox"
+                              aria-label={"Select ticket " + t.id}
+                              checked={selectedTickets.includes(t.id)}
+                              onChange={() =>
+                                toggleSelection(selectTickets, t.id)
+                              }
+                            />
+                          </td>
+                        )}
                         <td>
                           <b>{t.id}</b>
                         </td>
@@ -919,20 +1011,52 @@ function App({ user }) {
                     {settings.weights.reduce((a, b) => a + b, 0)} total points
                   </p>
                 </div>
-                {qc && (
-                  <button
-                    className="button primary"
-                    onClick={() => M("review")}
-                  >
-                    <Plus size={16} />
-                    New review
-                  </button>
-                )}
+                <div className="actions">
+                  {admin && (
+                    <button
+                      className="button danger"
+                      disabled={!selectedReviewIds.length}
+                      onClick={() => beginDelete("reviews", selectedReviewIds)}
+                    >
+                      Delete selected ({selectedReviewIds.length})
+                    </button>
+                  )}
+                  {qc && (
+                    <button
+                      className="button primary"
+                      onClick={() => M("review")}
+                    >
+                      <Plus size={16} />
+                      New review
+                    </button>
+                  )}
+                </div>
               </div>
               <div className="tablewrap">
                 <table>
                   <thead>
                     <tr>
+                      {admin && (
+                        <th>
+                          <input
+                            type="checkbox"
+                            aria-label="Select visible QC reviews (up to 100)"
+                            checked={
+                              scopedReviews.length > 0 &&
+                              scopedReviews
+                                .slice(0, 100)
+                                .every((r) => selectedReviews.includes(r.id))
+                            }
+                            onChange={(e) =>
+                              selectReviews(
+                                e.target.checked
+                                  ? scopedReviews.slice(0, 100).map((r) => r.id)
+                                  : [],
+                              )
+                            }
+                          />
+                        </th>
+                      )}
                       <th>Ticket</th>
                       <th>Reviewer</th>
                       <th>Score</th>
@@ -944,8 +1068,28 @@ function App({ user }) {
                     {reviews
                       .filter((r) => visible.some((t) => t.id === r.ticket))
                       .map((r, i) => (
-                        <tr key={i}>
-                          <td>{r.ticket}</td>
+                        <tr key={r.id}>
+                          {admin && (
+                            <td>
+                              <input
+                                type="checkbox"
+                                aria-label={
+                                  "Select QC review " +
+                                  r.id +
+                                  " for " +
+                                  r.ticket
+                                }
+                                checked={selectedReviews.includes(r.id)}
+                                onChange={() =>
+                                  toggleSelection(selectReviews, r.id)
+                                }
+                              />
+                            </td>
+                          )}
+                          <td>
+                            {r.ticket}
+                            <small>Review #{r.id}</small>
+                          </td>
                           <td>{r.reviewer}</td>
                           <td>
                             <span className="badge solved">
@@ -1074,6 +1218,100 @@ function App({ user }) {
         <div className="toast">
           <Check size={17} />
           {toast}
+        </div>
+      )}
+      {deleting && admin && (
+        <div className="overlay">
+          <div
+            className="modal"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="delete-title"
+          >
+            <h2 id="delete-title">
+              Delete selected{" "}
+              {deleting.kind === "tickets" ? "tickets" : "QC reviews"}?
+            </h2>
+            <p>
+              This permanently removes {deleting.ids.length} selected record(s).{" "}
+              {deleting.kind === "tickets"
+                ? "All linked QC reviews will also be deleted."
+                : "The original tickets will be kept."}{" "}
+              Performance reports will update. User accounts and the audit log
+              will be kept.
+            </p>
+            <div className="delete-list">
+              {deleting.ids.map((id) => (
+                <div key={id}>
+                  {deleting.kind === "tickets"
+                    ? id
+                    : "QC review #" +
+                      id +
+                      " · " +
+                      (reviews.find((r) => r.id === id)?.ticket || "")}
+                </div>
+              ))}
+            </div>
+            <p>
+              Export any records you need before deleting. This cannot be undone
+              in the tool.
+            </p>
+            <form
+              onSubmit={async (e) => {
+                e.preventDefault();
+                const ok = await store.mutate(() =>
+                  api("/" + deleting.kind + "/delete-selected", "POST", {
+                    ids: deleting.ids,
+                    confirmation: confirmDelete,
+                  }),
+                );
+                if (ok) {
+                  if (deleting.kind === "tickets") selectTickets([]);
+                  else selectReviews([]);
+                  setDeleting(null);
+                  notice("Selected records deleted");
+                }
+              }}
+            >
+              <label>
+                Type{" "}
+                <b>
+                  {deleting.kind === "tickets"
+                    ? "DELETE SELECTED TICKETS"
+                    : "DELETE SELECTED QC REVIEWS"}
+                </b>
+                <input
+                  autoFocus
+                  value={confirmDelete}
+                  onChange={(e) => setConfirmDelete(e.target.value)}
+                  aria-label="Deletion confirmation"
+                  required
+                />
+              </label>
+              <div className="actions">
+                <button
+                  type="button"
+                  className="button"
+                  disabled={store.busy}
+                  onClick={() => setDeleting(null)}
+                >
+                  Cancel
+                </button>
+                <button
+                  className="button danger"
+                  disabled={
+                    store.busy ||
+                    confirmDelete !==
+                      (deleting.kind === "tickets"
+                        ? "DELETE SELECTED TICKETS"
+                        : "DELETE SELECTED QC REVIEWS")
+                  }
+                >
+                  Permanently delete {deleting.ids.length} record(s)
+                </button>
+              </div>
+            </form>
+          </div>
         </div>
       )}
       {modal && (
@@ -1396,7 +1634,7 @@ function TeamTable({ team, compact }) {
                 )}
               </td>
               <td>
-                <span className={"badge " + (u.active ? "solved" : "")} >
+                <span className={"badge " + (u.active ? "solved" : "")}>
                   <i /> {u.active ? "Active" : "Inactive"}
                 </span>
               </td>

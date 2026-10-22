@@ -46,6 +46,17 @@ Set `ADMIN_EMAIL` and `ADMIN_PASSWORD` through your shell's secure environment m
 - Team metrics retain historical data for deactivated members. Overview and Production export filtered ticket data; Team exports metrics; QC exports review ratings. PDF exports compact summary fields. Spreadsheet formula-like text is escaped for Excel/CSV. Export libraries load on demand.
 - Other team members' changes refresh within 15 seconds. Failed server saves show an error and are not presented as saved.
 
+## Delete selected tickets or QC reviews (admins only)
+
+1. Export any records you need to retain before deleting.
+2. In **Production**, tick the checkboxes beside selected tickets, then click **Delete selected**. The header checkbox selects up to 100 visible tickets.
+3. In **Quality control**, select individual reviews using their checkboxes and review IDs, then click **Delete selected**. Deleting a review keeps its ticket.
+4. Check the exact list in the dialog. Type `DELETE SELECTED TICKETS` or `DELETE SELECTED QC REVIEWS`, as shown, then confirm. Cancel makes no changes.
+
+Deleting a ticket also deletes all its linked QC reviews. Deletions are permanent in the tool and update the performance metrics. User accounts, settings and audit events remain. Each batch is atomic: if any selected record no longer exists, the entire batch is rejected. Only admins may call these endpoints; operators and QC reviewers cannot delete. The API allows at most 100 selected records per request and validates the typed confirmation independently of the UI.
+
+After updating GitHub, existing Render services must use **Manual Deploy → Deploy latest commit** because automatic deployments are disabled in the supplied Blueprint. No database reset is required for this feature.
+
 ## Data durability and backups
 
 A persistent disk preserves the database through restarts/deployments but does not replace a backup policy. Before operational use, configure organization-approved off-service backups and verify restoration. Use the Render shell to run:

@@ -225,12 +225,10 @@ app.post("/api/password", (req, res) => {
     !validPassword(password) ||
     !verify(current, req.user.password)
   )
-    return res
-      .status(400)
-      .json({
-        error:
-          "Current password incorrect or new password shorter than 12 characters",
-      });
+    return res.status(400).json({
+      error:
+        "Current password incorrect or new password shorter than 12 characters",
+    });
   db.prepare("UPDATE users SET password=? WHERE id=?").run(
     passwordHash(password),
     req.user.id,
@@ -280,12 +278,10 @@ app.post("/api/tickets", (req, res) => {
     typeof notes !== "string" ||
     notes.length > 5000
   )
-    return res
-      .status(400)
-      .json({
-        error:
-          "Use a ticket ID with letters, numbers, hyphens or underscores, and a client name",
-      });
+    return res.status(400).json({
+      error:
+        "Use a ticket ID with letters, numbers, hyphens or underscores, and a client name",
+    });
   if (db.prepare("SELECT id FROM tickets WHERE lower(id)=lower(?)").get(id))
     return res.status(409).json({ error: "This ticket ID already exists" });
   db.prepare("INSERT INTO tickets VALUES(?,?,?,?,?,?,?)").run(
@@ -332,12 +328,10 @@ app.post("/api/users", admin, (req, res) => {
     !roles.includes(role) ||
     !validPassword(password)
   )
-    return res
-      .status(400)
-      .json({
-        error:
-          "Name, valid email, role and password of at least 12 characters are required",
-      });
+    return res.status(400).json({
+      error:
+        "Name, valid email, role and password of at least 12 characters are required",
+    });
   if (
     db
       .prepare("SELECT id FROM users WHERE email=?")
@@ -449,6 +443,74 @@ app.post("/api/reviews", reviewer, (req, res) => {
   audit(req.user.id, "review_created", ticket);
   res.status(201).json({ ok: true });
 });
+// Selected deletion is atomic and available only to administrators.
+for (const kind of ["tickets", "reviews"]) {
+  app.post(`/api/${kind}/delete-selected`, admin, (req, res) => {
+    const { ids, confirmation } = req.body;
+    const phrase =
+      kind === "tickets"
+        ? "DELETE SELECTED TICKETS"
+        : "DELETE SELECTED QC REVIEWS";
+    if (
+      confirmation !== phrase ||
+      !Array.isArray(ids) ||
+      ids.length < 1 ||
+      ids.length > 100 ||
+      new Set(ids).size !== ids.length ||
+      ids.some((id) =>
+        kind === "tickets"
+          ? !text(id, 100)
+          : !Number.isSafeInteger(id) || id < 1,
+      )
+    ) {
+      return res
+        .status(400)
+        .json({
+          error: "Select 1–100 records and enter the exact confirmation phrase",
+        });
+    }
+    const marks = ids.map(() => "?").join(",");
+    db.exec("BEGIN IMMEDIATE");
+    try {
+      const found = db
+        .prepare(`SELECT id FROM ${kind} WHERE id IN (${marks})`)
+        .all(...ids);
+      if (found.length !== ids.length) {
+        db.exec("ROLLBACK");
+        return res
+          .status(409)
+          .json({
+            error:
+              "Some selected records no longer exist. Refresh and select again; nothing was deleted.",
+          });
+      }
+      let linkedReviews = 0;
+      if (kind === "tickets") {
+        const linked = db
+          .prepare(`SELECT id FROM reviews WHERE ticket IN (${marks})`)
+          .all(...ids);
+        linkedReviews = linked.length;
+        for (const r of linked)
+          audit(req.user.id, "review_deleted_with_ticket", r.id);
+        db.prepare(`DELETE FROM reviews WHERE ticket IN (${marks})`).run(
+          ...ids,
+        );
+      }
+      db.prepare(`DELETE FROM ${kind} WHERE id IN (${marks})`).run(...ids);
+      for (const id of ids)
+        audit(
+          req.user.id,
+          kind === "tickets" ? "ticket_deleted" : "review_deleted",
+          id,
+        );
+      db.exec("COMMIT");
+      res.json({ deleted: ids.length, linkedReviews });
+    } catch (error) {
+      db.exec("ROLLBACK");
+      throw error;
+    }
+  });
+}
 app.get("/api/audit", admin, (req, res) =>
   res.json(
     db
@@ -463,14 +525,12 @@ app.use(express.static(resolve("dist"), { index: false }));
 app.get("/{*path}", (req, res) => res.sendFile(resolve("dist/index.html")));
 app.use((err, req, res, next) => {
   console.error("Request failed:", err.code || err.name);
-  res
-    .status(err.status || 500)
-    .json({
-      error:
-        err.status === 400
-          ? "Invalid request"
-          : "The server could not complete this request",
-    });
+  res.status(err.status || 500).json({
+    error:
+      err.status === 400
+        ? "Invalid request"
+        : "The server could not complete this request",
+  });
 });
 app.listen(Number(process.env.PORT) || 3000, "0.0.0.0", () =>
   console.log("SheerID ES server listening."),
